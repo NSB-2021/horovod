@@ -153,7 +153,7 @@ jobs:
 
   build-and-test:
     name: "Build and Test (${{ matrix.image }})"
-    needs: [init-workflow]
+    needs: [init-workflow, build-and-test-macos]
     if: >
       needs.init-workflow.outputs.run-at-all == 'true' &&
       needs.init-workflow.outputs.run-builds-and-tests == 'true'
@@ -3341,7 +3341,7 @@ jobs:
 
   build-and-test-macos:
     name: "Build and Test macOS (${{ matrix.image }}-macos)"
-    needs: [init-workflow, build-and-test]
+    needs: [init-workflow]
     if: >
       needs.init-workflow.outputs.run-at-all == 'true' &&
       needs.init-workflow.outputs.run-builds-and-tests == 'true'

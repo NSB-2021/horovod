@@ -800,9 +800,9 @@ def main():
         workflow = workflow_header() + jobs(
             init_workflow_job(),
             # changing these names require changes in the workflow-conclusion step in ci-fork.yaml
-            build_and_test_images(id='build-and-test', name='Build and Test', needs=['init-workflow'], images=release_images, parallel_images='-cpu-', tests_per_image=tests_per_image, tests=tests),
+            build_and_test_images(id='build-and-test', name='Build and Test', needs=['build-and-test-macos'], images=release_images, parallel_images='-cpu-', tests_per_image=tests_per_image, tests=tests),
             build_and_test_images(id='build-and-test-heads', name='Build and Test heads', needs=['build-and-test'], images=allhead_images, parallel_images='', tests_per_image=tests_per_image, tests=tests),
-            build_and_test_macos(id='build-and-test-macos', name='Build and Test macOS', needs=['build-and-test']),
+            build_and_test_macos(id='build-and-test-macos', name='Build and Test macOS', needs=['init-workflow']),
             trigger_buildkite_job(id='buildkite', name='Build and Test GPU (on Builtkite)', needs=['build-and-test'], mode='GPU NON HEADS'),
             trigger_buildkite_job(id='buildkite-heads', name='Build and Test GPU heads (on Builtkite)', needs=['build-and-test'], mode='GPU HEADS'),
             publish_docker_images(needs=['build-and-test', 'buildkite'], images=['horovod', 'horovod-cpu', 'horovod-ray']),
