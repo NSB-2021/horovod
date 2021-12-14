@@ -15,10 +15,15 @@
 """Gradient compression algorithms."""
 
 import tensorflow as tf
+import numpy as np
+
+global_s = tf.Variable(0, name='global_s', trainable=False)
+global_update = tf.Variable(0, name='global_s', trainable=False)
 
 
 class Compressor(object):
     """Interface for compressing and decompressing a given tensor."""
+
     @staticmethod
     def compress(tensor):
         """Compresses a tensor and returns it with the context needed to decompress it."""
@@ -30,8 +35,66 @@ class Compressor(object):
         pass
 
 
+def generateRandomIndices(shape):
+    """generate random indices for a tensor of size (30% of the received shape)"""
+    dim = shape
+    tensor_size = tf.math.reduce_prod(dim).numpy()
+    stf = tf.cast(tensor_size * 0.3, dtype=tf.int32) + 1
+    rand = tf.cast(tf.reshape((), (stf, 0)), dtype=tf.int32)  # an empty tensor to start with
+    update = int(global_update)  ####<<(check the note below)
+    seed = dim[0] * 150 + update
+    # constructing a vector of indices for each dimension, and concat them to create the indices vector.
+    for i in range(0, len(dim)):
+        rng = tf.random.experimental.Generator.from_seed(seed)
+        r = rng.uniform((stf, 1), 0, dim[i], dtype=tf.int32)
+        tf.transpose(r)
+        rand = tf.concat([rand, r], -1)
+        seed += dim[i]
+    ####################################################################################################################
+    # (NOTE#1):
+    # The seed need to be updated after every epoch, because we want pick another set of random indices for every epoch.
+    # (Any update can work, for example incrementing the seed by one, or whatever)
+    # TF2 no longer support using global-steps
+    # For now, I am using the class global variables and assuming that we have 2 workers.
+    # This need to be tested in Horovod,
+    # and if those variables did not work, we can try using the iteration# callback ,for example, as an update,
+    # which should be common among all workers.
+    ####################################################################################################################
+    return rand
+
+
+class RandomCompressor(Compressor):
+    """Compress the gradients by randomly selecting 30% of the tensor."""
+
+    @staticmethod
+    def compress(tensor):
+        """returns 30% of the tensor."""
+        shape = tensor.get_shape()
+        ind = generateRandomIndices(shape)
+        result = tf.gather_nd(tensor, ind)
+        global_s.assign_add(1)
+        return result, shape
+
+    @staticmethod
+    def decompress(tensor, ctx):
+        """reconstruct the tensor to the original shape and fill the empty places with zeros."""
+        dim = ctx  # The shape of the tensor to be reconstructed
+        stf = tensor.get_shape()[0]  # the number of elements in each dimension
+        ind = generateRandomIndices(dim)
+        orgA = np.zeros(dim)
+        for j in range(stf):
+            orgA[ind[j]] = tensor[j]
+        org = tf.convert_to_tensor(orgA)
+
+        if global_s % 2 == 0:  # to take care of NOTE#1
+            global_update.assign_add(1)
+
+        return org
+
+
 class NoneCompressor(Compressor):
     """Default no-op compression."""
+
     @staticmethod
     def compress(tensor):
         """Returns the tensor unmodified."""
@@ -45,6 +108,7 @@ class NoneCompressor(Compressor):
 
 class FP16Compressor(Compressor):
     """Compress all floating point gradients to 16-bit."""
+
     @staticmethod
     def compress(tensor):
         """Downcasts the tensor to 16-bit."""
@@ -72,3 +136,6 @@ class Compression(object):
 
     """Compress all floating point gradients to 16-bit."""
     fp16 = FP16Compressor
+
+    """Compress the gradients by randomly selecting 30% of the tensor."""
+    rand = RandomCompressor
